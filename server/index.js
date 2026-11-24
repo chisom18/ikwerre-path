@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
+import { logger } from './logger.js';
 import { db, getPublicUser } from './db.js';
+
 import {
   createSession,
   destroySession,
@@ -132,6 +134,15 @@ const authRateLimit = rateLimit({
   message: { error: 'Too many account attempts. Please wait and try again.' },
   skip: () => process.env.NODE_ENV === 'test',
 });
+
+const emailRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 3, // Only 3 emails per hour per IP
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many email requests. Please check your inbox or try again in an hour.' },
+});
+
 
 function requireAdmin(request, response, next) {
   requireUser(request, response, () => {
@@ -263,7 +274,8 @@ app.post('/api/auth/signin', authRateLimit, (request, response) => {
   response.json({ user: getPublicUser(user.id) });
 });
 
-app.post('/api/auth/resend-verification', authRateLimit, async (request, response, next) => {
+app.post('/api/auth/resend-verification', emailRateLimit, authRateLimit, async (request, response, next) => {
+
   const email = typeof request.body.email === 'string'
     ? request.body.email.trim().toLowerCase()
     : '';
@@ -314,7 +326,8 @@ app.post('/api/auth/verify-email', authRateLimit, (request, response) => {
   response.json({ user: getPublicUser(user.id) });
 });
 
-app.post('/api/auth/forgot-password', authRateLimit, async (request, response, next) => {
+app.post('/api/auth/forgot-password', emailRateLimit, authRateLimit, async (request, response, next) => {
+
   const email = typeof request.body.email === 'string'
     ? request.body.email.trim().toLowerCase()
     : '';
@@ -671,7 +684,8 @@ if (existsSync(resolve(frontendDirectory, 'index.html'))) {
 }
 
 app.use((error, _request, response, _next) => {
-  console.error('API request failed:', error);
+  logger.error('API request failed', error);
+
   const status = error instanceof BillingUnavailableError
     ? error.statusCode
     : Number.isInteger(error.statusCode)

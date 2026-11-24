@@ -15,8 +15,10 @@ function setSessionCookie(response, token) {
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_TTL_MS,
+    // prevent JS from accessing cookie (XSS protection)
   });
 }
+
 
 function passwordHash(password) {
   const salt = randomBytes(16);
